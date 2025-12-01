@@ -7,6 +7,7 @@ import '../theme/app_spacing.dart';
 import '../widgets/progress_bar.dart';
 import '../widgets/medication_card.dart';
 import '../widgets/app_button.dart';
+import 'add_medication_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -20,18 +21,27 @@ class DashboardScreen extends StatelessWidget {
           children: [
             _buildHeader(context),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildAdherenceCard(context),
-                    const SizedBox(height: AppSpacing.lg),
-                    _buildNextDoseCard(context),
-                    const SizedBox(height: AppSpacing.lg),
-                    _buildUpcomingSection(context),
-                  ],
-                ),
+              child: Consumer<MedicationProvider>(
+                builder: (context, provider, child) {
+                  // Show empty state if no medications
+                  if (provider.medications.isEmpty) {
+                    return _buildEmptyState(context);
+                  }
+
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildAdherenceCard(context),
+                        const SizedBox(height: AppSpacing.lg),
+                        _buildNextDoseCard(context),
+                        const SizedBox(height: AppSpacing.lg),
+                        _buildUpcomingSection(context),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
           ],
@@ -84,6 +94,62 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildEmptyState(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Spacer(),
+          Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.gray200, width: 2),
+            ),
+            child: const Center(
+              child: Icon(Icons.medication, size: 64, color: AppColors.gray300),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          const Text(
+            'No Medications',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
+              color: AppColors.primaryBlack,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          const Text(
+            'Add your first medication to start\ntracking your medication schedule.',
+            style: TextStyle(
+              fontSize: 14,
+              color: AppColors.gray500,
+              height: 1.5,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          AppButton(
+            text: '+ Add Medication',
+            variant: ButtonVariant.primary,
+            fullWidth: true,
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AddMedicationScreen(),
+                ),
+              );
+            },
+          ),
+          const Spacer(),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAdherenceCard(BuildContext context) {
     return Consumer<MedicationProvider>(
       builder: (context, provider, child) {
@@ -116,7 +182,43 @@ class DashboardScreen extends StatelessWidget {
     return Consumer<MedicationProvider>(
       builder: (context, provider, child) {
         final nextDose = provider.getNextDose();
+        final todaysDoses = provider.getTodaysDoses();
 
+        // If no doses at all today
+        if (todaysDoses.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            decoration: BoxDecoration(
+              color: AppColors.pureWhite,
+              border: Border.all(color: AppColors.primaryBlack, width: 1),
+            ),
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.info_outline,
+                  size: 48,
+                  color: AppColors.gray300,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                const Text(
+                  'No doses scheduled',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryBlack,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                const Text(
+                  'Add medications to see your schedule',
+                  style: TextStyle(fontSize: 14, color: AppColors.gray500),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // If all doses are taken
         if (nextDose == null) {
           return Container(
             padding: const EdgeInsets.all(AppSpacing.lg),
@@ -289,18 +391,6 @@ class DashboardScreen extends StatelessWidget {
                   ),
                 );
               }),
-            if (upcoming.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: AppSpacing.md),
-                child: AppButton(
-                  text: '+ Add Medication',
-                  variant: ButtonVariant.secondary,
-                  fullWidth: true,
-                  onPressed: () {
-                    // Navigate to add medication
-                  },
-                ),
-              ),
           ],
         );
       },

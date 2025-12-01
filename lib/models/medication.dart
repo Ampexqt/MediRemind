@@ -45,4 +45,34 @@ class Medication {
       remindersEnabled: remindersEnabled ?? this.remindersEnabled,
     );
   }
+
+  // Convert to JSON
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'dosage': dosage,
+      'form': form,
+      'frequency': frequency,
+      'times': times,
+      'startDate': startDate.toIso8601String(),
+      'durationDays': durationDays,
+      'remindersEnabled': remindersEnabled,
+    };
+  }
+
+  // Create from JSON
+  factory Medication.fromJson(Map<String, dynamic> json) {
+    return Medication(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      dosage: json['dosage'] as String,
+      form: json['form'] as String,
+      frequency: json['frequency'] as String,
+      times: List<String>.from(json['times'] as List),
+      startDate: DateTime.parse(json['startDate'] as String),
+      durationDays: json['durationDays'] as int?,
+      remindersEnabled: json['remindersEnabled'] as bool? ?? true,
+    );
+  }
 }
