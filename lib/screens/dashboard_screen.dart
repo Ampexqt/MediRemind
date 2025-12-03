@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/medication_provider.dart';
+import '../models/dose_log.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../widgets/progress_bar.dart';
@@ -82,12 +83,6 @@ class DashboardScreen extends StatelessWidget {
                 style: const TextStyle(fontSize: 14, color: AppColors.gray500),
               ),
             ],
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings, size: 24),
-            onPressed: () {
-              // Navigate to settings
-            },
           ),
         ],
       ),
@@ -181,7 +176,6 @@ class DashboardScreen extends StatelessWidget {
   Widget _buildNextDoseCard(BuildContext context) {
     return Consumer<MedicationProvider>(
       builder: (context, provider, child) {
-        final nextDose = provider.getNextDose();
         final todaysDoses = provider.getTodaysDoses();
 
         // If no doses at all today
@@ -218,8 +212,12 @@ class DashboardScreen extends StatelessWidget {
           );
         }
 
-        // If all doses are taken
-        if (nextDose == null) {
+        // Check if all doses are actually taken (not just no upcoming doses)
+        final allTaken = todaysDoses.every(
+          (dose) => dose.status == DoseStatus.taken,
+        );
+
+        if (allTaken) {
           return Container(
             padding: const EdgeInsets.all(AppSpacing.lg),
             decoration: BoxDecoration(
@@ -252,6 +250,48 @@ class DashboardScreen extends StatelessWidget {
           );
         }
 
+        // Find the next dose that should be taken
+        // This includes both upcoming doses and overdue doses
+        final pendingDoses =
+            todaysDoses
+                .where((dose) => dose.status == DoseStatus.pending)
+                .toList()
+              ..sort((a, b) => a.scheduledTime.compareTo(b.scheduledTime));
+
+        if (pendingDoses.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            decoration: BoxDecoration(
+              color: AppColors.pureWhite,
+              border: Border.all(color: AppColors.primaryBlack, width: 1),
+            ),
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.check_circle,
+                  size: 48,
+                  color: AppColors.primaryBlack,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                const Text(
+                  'All doses taken for today!',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryBlack,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                const Text(
+                  'Great job staying on track',
+                  style: TextStyle(fontSize: 14, color: AppColors.gray500),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final nextDose = pendingDoses.first;
         final medication = provider.medications.firstWhere(
           (m) => m.id == nextDose.medicationId,
         );
@@ -310,8 +350,15 @@ class DashboardScreen extends StatelessWidget {
                 fullWidth: true,
                 onPressed: () async {
                   final result = await provider.markDoseAsTaken(nextDose.id);
-                  if (!result.canTake && context.mounted) {
-                    _showValidationNotification(context, result.message);
+                  if (context.mounted) {
+                    if (result.canTake) {
+                      _showSuccessToast(
+                        context,
+                        '${medication.name} taken successfully!',
+                      );
+                    } else {
+                      _showToast(context, result.message);
+                    }
                   }
                 },
               ),
@@ -330,31 +377,13 @@ class DashboardScreen extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'UPCOMING TODAY',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.gray500,
-                  ),
-                ),
-                TextButton(
-                  onPressed: () {
-                    // Navigate to schedule
-                  },
-                  child: const Text(
-                    'View All',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.primaryBlack,
-                    ),
-                  ),
-                ),
-              ],
+            const Text(
+              'UPCOMING TODAY',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.gray500,
+              ),
             ),
             const SizedBox(height: AppSpacing.sm),
             if (upcoming.isEmpty)
@@ -383,17 +412,6 @@ class DashboardScreen extends StatelessWidget {
                     name: medication.name,
                     dosage: medication.dosage,
                     frequency: DateFormat('h:mm a').format(dose.scheduledTime),
-                    actionButton: AppButton(
-                      text: 'Take Now',
-                      variant: ButtonVariant.primary,
-                      fullWidth: true,
-                      onPressed: () async {
-                        final result = await provider.markDoseAsTaken(dose.id);
-                        if (!result.canTake && context.mounted) {
-                          _showValidationNotification(context, result.message);
-                        }
-                      },
-                    ),
                   ),
                 );
               }),
@@ -403,60 +421,147 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  void _showValidationNotification(BuildContext context, String message) {
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        backgroundColor: AppColors.pureWhite,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.zero,
-          side: BorderSide(color: AppColors.primaryBlack, width: 2),
+  void _showToast(BuildContext context, String message) {
+    final overlay = Overlay.of(context);
+    final overlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        top: MediaQuery.of(context).padding.top + 16,
+        left: 16,
+        right: 16,
+        child: Material(
+          color: Colors.transparent,
+          child: _ToastNotification(message: message, isSuccess: false),
         ),
+      ),
+    );
+
+    overlay.insert(overlayEntry);
+
+    // Auto-dismiss after 3 seconds
+    Future.delayed(const Duration(seconds: 3), () {
+      overlayEntry.remove();
+    });
+  }
+
+  void _showSuccessToast(BuildContext context, String message) {
+    final overlay = Overlay.of(context);
+    final overlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        top: MediaQuery.of(context).padding.top + 16,
+        left: 16,
+        right: 16,
+        child: Material(
+          color: Colors.transparent,
+          child: _ToastNotification(message: message, isSuccess: true),
+        ),
+      ),
+    );
+
+    overlay.insert(overlayEntry);
+
+    // Auto-dismiss after 3 seconds
+    Future.delayed(const Duration(seconds: 3), () {
+      overlayEntry.remove();
+    });
+  }
+}
+
+class _ToastNotification extends StatefulWidget {
+  final String message;
+  final bool isSuccess;
+
+  const _ToastNotification({required this.message, this.isSuccess = false});
+
+  @override
+  State<_ToastNotification> createState() => _ToastNotificationState();
+}
+
+class _ToastNotificationState extends State<_ToastNotification>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, -1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+
+    _controller.forward();
+
+    // Start fade out after 2.5 seconds
+    Future.delayed(const Duration(milliseconds: 2500), () {
+      if (mounted) {
+        _controller.reverse();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SlideTransition(
+      position: _slideAnimation,
+      child: FadeTransition(
+        opacity: _fadeAnimation,
         child: Container(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: AppColors.primaryBlack,
+            border: Border.all(color: AppColors.primaryBlack, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
             children: [
               Container(
-                width: 64,
-                height: 64,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
-                  border: Border.all(color: AppColors.primaryBlack, width: 2),
+                  border: Border.all(color: AppColors.pureWhite, width: 2),
                 ),
-                child: const Center(
+                child: Center(
                   child: Icon(
-                    Icons.access_time,
-                    size: 32,
-                    color: AppColors.primaryBlack,
+                    widget.isSuccess ? Icons.check_circle : Icons.access_time,
+                    size: 20,
+                    color: AppColors.pureWhite,
                   ),
                 ),
               ),
-              const SizedBox(height: AppSpacing.md),
-              const Text(
-                'Cannot Take Medication',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.primaryBlack,
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  widget.message,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.pureWhite,
+                    height: 1.4,
+                  ),
                 ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                message,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: AppColors.gray500,
-                  height: 1.5,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              AppButton(
-                text: 'OK',
-                variant: ButtonVariant.primary,
-                fullWidth: true,
-                onPressed: () => Navigator.pop(context),
               ),
             ],
           ),
