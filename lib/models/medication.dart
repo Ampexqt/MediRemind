@@ -9,6 +9,7 @@ class Medication {
   final DateTime startDate;
   final int? durationDays;
   final bool remindersEnabled;
+  final List<int> selectedDays; // 1=Monday, 2=Tuesday, ..., 7=Sunday
 
   Medication({
     required this.id,
@@ -20,7 +21,9 @@ class Medication {
     required this.startDate,
     this.durationDays,
     this.remindersEnabled = true,
-  });
+    List<int>? selectedDays,
+  }) : selectedDays =
+           selectedDays ?? [1, 2, 3, 4, 5, 6, 7]; // Default: all days
 
   Medication copyWith({
     String? id,
@@ -32,6 +35,7 @@ class Medication {
     DateTime? startDate,
     int? durationDays,
     bool? remindersEnabled,
+    List<int>? selectedDays,
   }) {
     return Medication(
       id: id ?? this.id,
@@ -43,6 +47,49 @@ class Medication {
       startDate: startDate ?? this.startDate,
       durationDays: durationDays ?? this.durationDays,
       remindersEnabled: remindersEnabled ?? this.remindersEnabled,
+      selectedDays: selectedDays ?? this.selectedDays,
+    );
+  }
+
+  // Convert to JSON
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'dosage': dosage,
+      'form': form,
+      'frequency': frequency,
+      'times': times,
+      'startDate': startDate.toIso8601String(),
+      'durationDays': durationDays,
+      'remindersEnabled': remindersEnabled,
+      'selectedDays': selectedDays,
+    };
+  }
+
+  // Create from JSON
+  factory Medication.fromJson(Map<String, dynamic> json) {
+    return Medication(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      dosage: json['dosage'] as String,
+      form: json['form'] as String,
+      frequency: json['frequency'] as String,
+      times: List<String>.from(json['times'] as List),
+      startDate: DateTime.parse(json['startDate'] as String),
+      durationDays: json['durationDays'] as int?,
+      remindersEnabled: json['remindersEnabled'] as bool? ?? true,
+      selectedDays: json['selectedDays'] != null
+          ? List<int>.from(json['selectedDays'] as List)
+          : [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+            ], // Default to all days for backward compatibility
     );
   }
 }

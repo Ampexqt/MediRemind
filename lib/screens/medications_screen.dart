@@ -5,6 +5,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../widgets/medication_card.dart';
 import '../widgets/app_button.dart';
+import 'add_medication_screen.dart';
 
 class MedicationsScreen extends StatelessWidget {
   const MedicationsScreen({super.key});
@@ -92,6 +93,51 @@ class MedicationsScreen extends StatelessWidget {
       builder: (context, provider, child) {
         final medications = provider.medications;
 
+        if (medications.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(height: AppSpacing.xl3),
+                Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: AppColors.gray200, width: 2),
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.medication,
+                      size: 56,
+                      color: AppColors.gray300,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xl),
+                const Text(
+                  'No Medications Yet',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryBlack,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                const Text(
+                  'Tap the button below to add\nyour first medication.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppColors.gray500,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          );
+        }
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -117,7 +163,13 @@ class MedicationsScreen extends StatelessWidget {
                     color: AppColors.primaryBlack,
                   ),
                   onTap: () {
-                    // Navigate to medication details
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            AddMedicationScreen(medication: medication),
+                      ),
+                    );
                   },
                 ),
               );
@@ -138,7 +190,12 @@ class MedicationsScreen extends StatelessWidget {
         variant: ButtonVariant.primary,
         fullWidth: true,
         onPressed: () {
-          // Navigate to add medication screen
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const AddMedicationScreen(),
+            ),
+          );
         },
       ),
     );

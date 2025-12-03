@@ -13,7 +13,15 @@ class ScheduleScreen extends StatefulWidget {
 }
 
 class _ScheduleScreenState extends State<ScheduleScreen> {
-  int selectedDay = 0; // 0 = Monday
+  late int selectedDay;
+
+  @override
+  void initState() {
+    super.initState();
+    // Set selectedDay to today's weekday (1=Monday, 7=Sunday)
+    // Convert to 0-indexed (0=Monday, 6=Sunday)
+    selectedDay = DateTime.now().weekday - 1;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -119,17 +127,43 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         final today = DateTime(now.year, now.month, now.day);
         final dateFormat = DateFormat('EEEE, MMMM d, yyyy');
 
-        // Get today's doses
-        final doses = provider.getTodaysDoses();
+        // Calculate the date for the selected day
+        final currentWeekday = now.weekday - 1; // 0-indexed
+        final dayDifference = selectedDay - currentWeekday;
+        final selectedDate = today.add(Duration(days: dayDifference));
+        final selectedWeekday =
+            selectedDay +
+            1; // Convert back to 1-indexed for medication.selectedDays
 
-        // Group doses by time
-        final Map<String, List<dynamic>> dosesByTime = {};
-        for (var dose in doses) {
-          final timeKey = DateFormat('h:mm a').format(dose.scheduledTime);
-          if (!dosesByTime.containsKey(timeKey)) {
-            dosesByTime[timeKey] = [];
+        // Get medications that should be taken on the selected day
+        final medicationsForDay = provider.medications.where((med) {
+          return med.selectedDays.contains(selectedWeekday);
+        }).toList();
+
+        // Create dose entries for the selected day
+        final Map<String, List<Map<String, dynamic>>> dosesByTime = {};
+        for (var med in medicationsForDay) {
+          for (var timeStr in med.times) {
+            final timeParts = timeStr.split(':');
+            final hour = int.parse(timeParts[0]);
+            final minute = int.parse(timeParts[1]);
+            final scheduledTime = DateTime(
+              selectedDate.year,
+              selectedDate.month,
+              selectedDate.day,
+              hour,
+              minute,
+            );
+            final timeKey = DateFormat('h:mm a').format(scheduledTime);
+
+            if (!dosesByTime.containsKey(timeKey)) {
+              dosesByTime[timeKey] = [];
+            }
+            dosesByTime[timeKey]!.add({
+              'medication': med,
+              'scheduledTime': scheduledTime,
+            });
           }
-          dosesByTime[timeKey]!.add(dose);
         }
 
         // Sort times
@@ -144,7 +178,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              dateFormat.format(today),
+              dateFormat.format(selectedDate),
               style: const TextStyle(fontSize: 14, color: AppColors.gray500),
             ),
             const SizedBox(height: AppSpacing.lg),
@@ -157,77 +191,88 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               ),
             ),
             const SizedBox(height: AppSpacing.md),
-            ...sortedTimes.map((timeStr) {
-              final dosesAtTime = dosesByTime[timeStr]!;
+            if (sortedTimes.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                decoration: BoxDecoration(
+                  color: AppColors.gray50,
+                  border: Border.all(color: AppColors.gray200, width: 1),
+                ),
+                child: const Center(
+                  child: Text(
+                    'No medications scheduled for this day',
+                    style: TextStyle(fontSize: 14, color: AppColors.gray400),
+                  ),
+                ),
+              )
+            else
+              ...sortedTimes.map((timeStr) {
+                final dosesAtTime = dosesByTime[timeStr]!;
 
-              return Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 80,
-                      child: Text(
-                        timeStr,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.primaryBlack,
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 80,
+                        child: Text(
+                          timeStr,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primaryBlack,
+                          ),
                         ),
                       ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        children: dosesAtTime.map<Widget>((dose) {
-                          final medication = provider.medications.firstWhere(
-                            (m) => m.id == dose.medicationId,
-                          );
+                      Expanded(
+                        child: Column(
+                          children: dosesAtTime.map<Widget>((doseInfo) {
+                            final medication = doseInfo['medication'];
 
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppColors.pureWhite,
-                              border: Border.all(
-                                color: AppColors.primaryBlack,
-                                width: 1,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.medication,
-                                  size: 16,
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.pureWhite,
+                                border: Border.all(
                                   color: AppColors.primaryBlack,
+                                  width: 1,
                                 ),
-                                const SizedBox(width: AppSpacing.xs),
-                                Expanded(
-                                  child: Text(
-                                    medication.name,
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.primaryBlack,
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.medication,
+                                    size: 16,
+                                    color: AppColors.primaryBlack,
+                                  ),
+                                  const SizedBox(width: AppSpacing.xs),
+                                  Expanded(
+                                    child: Text(
+                                      medication.name,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.primaryBlack,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                Icon(
-                                  dose.status.toString().contains('taken')
-                                      ? Icons.check_circle
-                                      : Icons.circle_outlined,
-                                  size: 20,
-                                  color: AppColors.primaryBlack,
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
+                                  const Icon(
+                                    Icons.circle_outlined,
+                                    size: 20,
+                                    color: AppColors.primaryBlack,
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              );
-            }),
+                    ],
+                  ),
+                );
+              }),
           ],
         );
       },

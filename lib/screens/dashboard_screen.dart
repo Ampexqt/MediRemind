@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/medication_provider.dart';
+import '../models/dose_log.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../widgets/progress_bar.dart';
 import '../widgets/medication_card.dart';
 import '../widgets/app_button.dart';
+import 'add_medication_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -20,18 +22,27 @@ class DashboardScreen extends StatelessWidget {
           children: [
             _buildHeader(context),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildAdherenceCard(context),
-                    const SizedBox(height: AppSpacing.lg),
-                    _buildNextDoseCard(context),
-                    const SizedBox(height: AppSpacing.lg),
-                    _buildUpcomingSection(context),
-                  ],
-                ),
+              child: Consumer<MedicationProvider>(
+                builder: (context, provider, child) {
+                  // Show empty state if no medications
+                  if (provider.medications.isEmpty) {
+                    return _buildEmptyState(context);
+                  }
+
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildAdherenceCard(context),
+                        const SizedBox(height: AppSpacing.lg),
+                        _buildNextDoseCard(context),
+                        const SizedBox(height: AppSpacing.lg),
+                        _buildUpcomingSection(context),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
           ],
@@ -73,12 +84,62 @@ class DashboardScreen extends StatelessWidget {
               ),
             ],
           ),
-          IconButton(
-            icon: const Icon(Icons.settings, size: 24),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Spacer(),
+          Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.gray200, width: 2),
+            ),
+            child: const Center(
+              child: Icon(Icons.medication, size: 64, color: AppColors.gray300),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          const Text(
+            'No Medications',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
+              color: AppColors.primaryBlack,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          const Text(
+            'Add your first medication to start\ntracking your medication schedule.',
+            style: TextStyle(
+              fontSize: 14,
+              color: AppColors.gray500,
+              height: 1.5,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          AppButton(
+            text: '+ Add Medication',
+            variant: ButtonVariant.primary,
+            fullWidth: true,
             onPressed: () {
-              // Navigate to settings
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AddMedicationScreen(),
+                ),
+              );
             },
           ),
+          const Spacer(),
         ],
       ),
     );
@@ -115,9 +176,48 @@ class DashboardScreen extends StatelessWidget {
   Widget _buildNextDoseCard(BuildContext context) {
     return Consumer<MedicationProvider>(
       builder: (context, provider, child) {
-        final nextDose = provider.getNextDose();
+        final todaysDoses = provider.getTodaysDoses();
 
-        if (nextDose == null) {
+        // If no doses at all today
+        if (todaysDoses.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            decoration: BoxDecoration(
+              color: AppColors.pureWhite,
+              border: Border.all(color: AppColors.primaryBlack, width: 1),
+            ),
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.info_outline,
+                  size: 48,
+                  color: AppColors.gray300,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                const Text(
+                  'No doses scheduled',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryBlack,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                const Text(
+                  'Add medications to see your schedule',
+                  style: TextStyle(fontSize: 14, color: AppColors.gray500),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // Check if all doses are actually taken (not just no upcoming doses)
+        final allTaken = todaysDoses.every(
+          (dose) => dose.status == DoseStatus.taken,
+        );
+
+        if (allTaken) {
           return Container(
             padding: const EdgeInsets.all(AppSpacing.lg),
             decoration: BoxDecoration(
@@ -150,6 +250,48 @@ class DashboardScreen extends StatelessWidget {
           );
         }
 
+        // Find the next dose that should be taken
+        // This includes both upcoming doses and overdue doses
+        final pendingDoses =
+            todaysDoses
+                .where((dose) => dose.status == DoseStatus.pending)
+                .toList()
+              ..sort((a, b) => a.scheduledTime.compareTo(b.scheduledTime));
+
+        if (pendingDoses.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            decoration: BoxDecoration(
+              color: AppColors.pureWhite,
+              border: Border.all(color: AppColors.primaryBlack, width: 1),
+            ),
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.check_circle,
+                  size: 48,
+                  color: AppColors.primaryBlack,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                const Text(
+                  'All doses taken for today!',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryBlack,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                const Text(
+                  'Great job staying on track',
+                  style: TextStyle(fontSize: 14, color: AppColors.gray500),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final nextDose = pendingDoses.first;
         final medication = provider.medications.firstWhere(
           (m) => m.id == nextDose.medicationId,
         );
@@ -206,8 +348,18 @@ class DashboardScreen extends StatelessWidget {
                 text: 'Take Now',
                 variant: ButtonVariant.secondary,
                 fullWidth: true,
-                onPressed: () {
-                  provider.markDoseAsTaken(nextDose.id);
+                onPressed: () async {
+                  final result = await provider.markDoseAsTaken(nextDose.id);
+                  if (context.mounted) {
+                    if (result.canTake) {
+                      _showSuccessToast(
+                        context,
+                        '${medication.name} taken successfully!',
+                      );
+                    } else {
+                      _showToast(context, result.message);
+                    }
+                  }
                 },
               ),
             ],
@@ -225,31 +377,13 @@ class DashboardScreen extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'UPCOMING TODAY',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.gray500,
-                  ),
-                ),
-                TextButton(
-                  onPressed: () {
-                    // Navigate to schedule
-                  },
-                  child: const Text(
-                    'View All',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.primaryBlack,
-                    ),
-                  ),
-                ),
-              ],
+            const Text(
+              'UPCOMING TODAY',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.gray500,
+              ),
             ),
             const SizedBox(height: AppSpacing.sm),
             if (upcoming.isEmpty)
@@ -278,32 +412,161 @@ class DashboardScreen extends StatelessWidget {
                     name: medication.name,
                     dosage: medication.dosage,
                     frequency: DateFormat('h:mm a').format(dose.scheduledTime),
-                    actionButton: AppButton(
-                      text: 'Take Now',
-                      variant: ButtonVariant.primary,
-                      fullWidth: true,
-                      onPressed: () {
-                        provider.markDoseAsTaken(dose.id);
-                      },
-                    ),
                   ),
                 );
               }),
-            if (upcoming.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: AppSpacing.md),
-                child: AppButton(
-                  text: '+ Add Medication',
-                  variant: ButtonVariant.secondary,
-                  fullWidth: true,
-                  onPressed: () {
-                    // Navigate to add medication
-                  },
-                ),
-              ),
           ],
         );
       },
+    );
+  }
+
+  void _showToast(BuildContext context, String message) {
+    final overlay = Overlay.of(context);
+    final overlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        top: MediaQuery.of(context).padding.top + 16,
+        left: 16,
+        right: 16,
+        child: Material(
+          color: Colors.transparent,
+          child: _ToastNotification(message: message, isSuccess: false),
+        ),
+      ),
+    );
+
+    overlay.insert(overlayEntry);
+
+    // Auto-dismiss after 3 seconds
+    Future.delayed(const Duration(seconds: 3), () {
+      overlayEntry.remove();
+    });
+  }
+
+  void _showSuccessToast(BuildContext context, String message) {
+    final overlay = Overlay.of(context);
+    final overlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        top: MediaQuery.of(context).padding.top + 16,
+        left: 16,
+        right: 16,
+        child: Material(
+          color: Colors.transparent,
+          child: _ToastNotification(message: message, isSuccess: true),
+        ),
+      ),
+    );
+
+    overlay.insert(overlayEntry);
+
+    // Auto-dismiss after 3 seconds
+    Future.delayed(const Duration(seconds: 3), () {
+      overlayEntry.remove();
+    });
+  }
+}
+
+class _ToastNotification extends StatefulWidget {
+  final String message;
+  final bool isSuccess;
+
+  const _ToastNotification({required this.message, this.isSuccess = false});
+
+  @override
+  State<_ToastNotification> createState() => _ToastNotificationState();
+}
+
+class _ToastNotificationState extends State<_ToastNotification>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, -1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+
+    _controller.forward();
+
+    // Start fade out after 2.5 seconds
+    Future.delayed(const Duration(milliseconds: 2500), () {
+      if (mounted) {
+        _controller.reverse();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SlideTransition(
+      position: _slideAnimation,
+      child: FadeTransition(
+        opacity: _fadeAnimation,
+        child: Container(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: AppColors.primaryBlack,
+            border: Border.all(color: AppColors.primaryBlack, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.pureWhite, width: 2),
+                ),
+                child: Center(
+                  child: Icon(
+                    widget.isSuccess ? Icons.check_circle : Icons.access_time,
+                    size: 20,
+                    color: AppColors.pureWhite,
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  widget.message,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.pureWhite,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

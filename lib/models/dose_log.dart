@@ -33,6 +33,35 @@ class DoseLog {
       status: status ?? this.status,
     );
   }
+
+  // Convert to JSON
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'medicationId': medicationId,
+      'medicationName': medicationName,
+      'scheduledTime': scheduledTime.toIso8601String(),
+      'takenTime': takenTime?.toIso8601String(),
+      'status': status.toString(),
+    };
+  }
+
+  // Create from JSON
+  factory DoseLog.fromJson(Map<String, dynamic> json) {
+    return DoseLog(
+      id: json['id'] as String,
+      medicationId: json['medicationId'] as String,
+      medicationName: json['medicationName'] as String,
+      scheduledTime: DateTime.parse(json['scheduledTime'] as String),
+      takenTime: json['takenTime'] != null
+          ? DateTime.parse(json['takenTime'] as String)
+          : null,
+      status: DoseStatus.values.firstWhere(
+        (e) => e.toString() == json['status'],
+        orElse: () => DoseStatus.pending,
+      ),
+    );
+  }
 }
 
 enum DoseStatus { pending, taken, missed, skipped }
