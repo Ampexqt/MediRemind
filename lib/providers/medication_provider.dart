@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 import '../models/medication.dart';
 import '../models/dose_log.dart';
+import '../models/dose_validation_result.dart';
 
 class MedicationProvider with ChangeNotifier {
   final List<Medication> _medications = [];
@@ -42,6 +44,9 @@ class MedicationProvider with ChangeNotifier {
     // Generate today's dose logs if needed
     _generateTodaysDoseLogs();
 
+    // Save to persist any regenerated logs
+    await _saveData();
+
     _isLoaded = true;
     notifyListeners();
   }
@@ -78,8 +83,61 @@ class MedicationProvider with ChangeNotifier {
       return logDate.isBefore(thirtyDaysAgo);
     });
 
-    // Check if we already have logs for today
-    final hasLogsForToday = _doseLogs.any((log) {
+    // Get today's day of week (1=Monday, 7=Sunday)
+    final todayDayOfWeek = today.weekday;
+
+    // Get medications that should have doses today
+    final medicationsForToday = _medications.where((med) {
+      return med.selectedDays.contains(todayDayOfWeek);
+    }).toList();
+
+    // Check if we need to regenerate logs for today
+    // This handles cases where medications were updated or selectedDays changed
+    bool needsRegeneration = false;
+
+    // Check if all medications that should have doses today have logs
+    for (var med in medicationsForToday) {
+      final hasLogsForMed = _doseLogs.any((log) {
+        final logDate = DateTime(
+          log.scheduledTime.year,
+          log.scheduledTime.month,
+          log.scheduledTime.day,
+        );
+        return logDate.isAtSameMomentAs(today) && log.medicationId == med.id;
+      });
+
+      if (!hasLogsForMed) {
+        needsRegeneration = true;
+        break;
+      }
+    }
+
+    // Also check if there are logs for medications that shouldn't have doses today
+    final todaysLogs = _doseLogs.where((log) {
+      final logDate = DateTime(
+        log.scheduledTime.year,
+        log.scheduledTime.month,
+        log.scheduledTime.day,
+      );
+      return logDate.isAtSameMomentAs(today);
+    }).toList();
+
+    for (var log in todaysLogs) {
+      final med = _medications
+          .where((m) => m.id == log.medicationId)
+          .firstOrNull;
+      if (med != null && !med.selectedDays.contains(todayDayOfWeek)) {
+        needsRegeneration = true;
+        break;
+      }
+    }
+
+    if (!needsRegeneration && todaysLogs.isNotEmpty) {
+      return; // Logs are correct, no need to regenerate
+    }
+
+    // Remove today's logs before regenerating
+    _doseLogs.removeWhere((log) {
       final logDate = DateTime(
         log.scheduledTime.year,
         log.scheduledTime.month,
@@ -88,10 +146,8 @@ class MedicationProvider with ChangeNotifier {
       return logDate.isAtSameMomentAs(today);
     });
 
-    if (hasLogsForToday) return;
-
     // Generate logs for today
-    for (var med in _medications) {
+    for (var med in medicationsForToday) {
       for (var timeStr in med.times) {
         final timeParts = timeStr.split(':');
         final hour = int.parse(timeParts[0]);
@@ -146,7 +202,83 @@ class MedicationProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> markDoseAsTaken(String doseLogId) async {
+  // Validation result for dose taking
+  DoseValidationResult canTakeDose(String doseLogId) {
+    final doseIndex = _doseLogs.indexWhere((log) => log.id == doseLogId);
+    if (doseIndex == -1) {
+      return DoseValidationResult(canTake: false, message: 'Dose not found');
+    }
+
+    final dose = _doseLogs[doseIndex];
+    final medication = _medications.firstWhere(
+      (m) => m.id == dose.medicationId,
+    );
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final todayWeekday = now.weekday;
+
+    // Check if today is in the medication's selected days
+    if (!medication.selectedDays.contains(todayWeekday)) {
+      final dayNames = [
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
+        'Sunday',
+      ];
+      final selectedDayNames = medication.selectedDays
+          .map((d) => dayNames[d - 1])
+          .join(', ');
+      return DoseValidationResult(
+        canTake: false,
+        message: 'This medication is only scheduled for: $selectedDayNames',
+      );
+    }
+
+    // Check if the dose is scheduled for today
+    final doseDate = DateTime(
+      dose.scheduledTime.year,
+      dose.scheduledTime.month,
+      dose.scheduledTime.day,
+    );
+    if (!doseDate.isAtSameMomentAs(today)) {
+      return DoseValidationResult(
+        canTake: false,
+        message: 'This dose is not scheduled for today',
+      );
+    }
+
+    // Check if current time is within acceptable window (30 minutes before/after)
+    final timeDifference = now.difference(dose.scheduledTime).inMinutes.abs();
+    const timeWindow = 30; // minutes
+
+    if (timeDifference > timeWindow) {
+      final scheduledTimeStr = DateFormat('h:mm a').format(dose.scheduledTime);
+      if (now.isBefore(dose.scheduledTime)) {
+        return DoseValidationResult(
+          canTake: false,
+          message: 'Too early! This dose is scheduled for $scheduledTimeStr',
+        );
+      } else {
+        return DoseValidationResult(
+          canTake: false,
+          message: 'Too late! This dose was scheduled for $scheduledTimeStr',
+        );
+      }
+    }
+
+    return DoseValidationResult(canTake: true, message: '');
+  }
+
+  Future<DoseValidationResult> markDoseAsTaken(String doseLogId) async {
+    // Validate before marking as taken
+    final validation = canTakeDose(doseLogId);
+    if (!validation.canTake) {
+      return validation;
+    }
+
     final index = _doseLogs.indexWhere((log) => log.id == doseLogId);
     if (index != -1) {
       _doseLogs[index] = _doseLogs[index].copyWith(
@@ -156,6 +288,7 @@ class MedicationProvider with ChangeNotifier {
       await _saveData();
       notifyListeners();
     }
+    return DoseValidationResult(canTake: true, message: 'Dose marked as taken');
   }
 
   Future<void> markDoseAsSkipped(String doseLogId) async {

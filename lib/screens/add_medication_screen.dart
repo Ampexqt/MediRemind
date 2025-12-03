@@ -29,6 +29,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
   DateTime _startDate = DateTime.now();
   bool _remindersEnabled = true;
   String _durationUnit = 'Days';
+  List<int> _selectedDays = [1, 2, 3, 4, 5, 6, 7]; // Default: all days
 
   @override
   void initState() {
@@ -42,6 +43,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
       _selectedFrequency = widget.medication!.frequency;
       _startDate = widget.medication!.startDate;
       _remindersEnabled = widget.medication!.remindersEnabled;
+      _selectedDays = List.from(widget.medication!.selectedDays);
 
       // Parse times
       _selectedTimes = widget.medication!.times.map((timeStr) {
@@ -94,6 +96,8 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                       _buildFrequencySelector(),
                       const SizedBox(height: AppSpacing.md),
                       _buildTimeSelector(),
+                      const SizedBox(height: AppSpacing.md),
+                      _buildDaySelector(),
                       const SizedBox(height: AppSpacing.md),
                       _buildStartDatePicker(),
                       const SizedBox(height: AppSpacing.md),
@@ -372,6 +376,108 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
     return '$hour:$minute $period';
   }
 
+  Widget _buildDaySelector() {
+    final days = [
+      {'label': 'M', 'value': 1, 'name': 'Monday'},
+      {'label': 'T', 'value': 2, 'name': 'Tuesday'},
+      {'label': 'W', 'value': 3, 'name': 'Wednesday'},
+      {'label': 'T', 'value': 4, 'name': 'Thursday'},
+      {'label': 'F', 'value': 5, 'name': 'Friday'},
+      {'label': 'S', 'value': 6, 'name': 'Saturday'},
+      {'label': 'S', 'value': 7, 'name': 'Sunday'},
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Days',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: AppColors.primaryBlack,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Row(
+          children: days.map((day) {
+            final isSelected = _selectedDays.contains(day['value'] as int);
+            return Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(right: day['value'] != 7 ? 4 : 0),
+                child: InkWell(
+                  onTap: () {
+                    setState(() {
+                      if (isSelected) {
+                        // Don't allow deselecting all days
+                        if (_selectedDays.length > 1) {
+                          _selectedDays.remove(day['value'] as int);
+                        }
+                      } else {
+                        _selectedDays.add(day['value'] as int);
+                        _selectedDays.sort();
+                      }
+                    });
+                  },
+                  child: Container(
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppColors.primaryBlack
+                          : AppColors.pureWhite,
+                      border: Border.all(
+                        color: AppColors.primaryBlack,
+                        width: 1,
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        day['label'] as String,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: isSelected
+                              ? AppColors.pureWhite
+                              : AppColors.primaryBlack,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          _getDaysDescription(),
+          style: const TextStyle(fontSize: 12, color: AppColors.gray500),
+        ),
+      ],
+    );
+  }
+
+  String _getDaysDescription() {
+    if (_selectedDays.length == 7) {
+      return 'Every day';
+    } else if (_selectedDays.length == 5 &&
+        _selectedDays.contains(1) &&
+        _selectedDays.contains(2) &&
+        _selectedDays.contains(3) &&
+        _selectedDays.contains(4) &&
+        _selectedDays.contains(5)) {
+      return 'Weekdays only';
+    } else if (_selectedDays.length == 2 &&
+        _selectedDays.contains(6) &&
+        _selectedDays.contains(7)) {
+      return 'Weekends only';
+    } else {
+      final dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      final selectedNames = _selectedDays.map((d) => dayNames[d - 1]).toList();
+      return selectedNames.join(', ');
+    }
+  }
+
   Widget _buildStartDatePicker() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -645,6 +751,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
       startDate: _startDate,
       durationDays: durationDays,
       remindersEnabled: _remindersEnabled,
+      selectedDays: _selectedDays,
     );
 
     final provider = Provider.of<MedicationProvider>(context, listen: false);

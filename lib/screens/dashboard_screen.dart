@@ -308,8 +308,11 @@ class DashboardScreen extends StatelessWidget {
                 text: 'Take Now',
                 variant: ButtonVariant.secondary,
                 fullWidth: true,
-                onPressed: () {
-                  provider.markDoseAsTaken(nextDose.id);
+                onPressed: () async {
+                  final result = await provider.markDoseAsTaken(nextDose.id);
+                  if (!result.canTake && context.mounted) {
+                    _showValidationNotification(context, result.message);
+                  }
                 },
               ),
             ],
@@ -384,8 +387,11 @@ class DashboardScreen extends StatelessWidget {
                       text: 'Take Now',
                       variant: ButtonVariant.primary,
                       fullWidth: true,
-                      onPressed: () {
-                        provider.markDoseAsTaken(dose.id);
+                      onPressed: () async {
+                        final result = await provider.markDoseAsTaken(dose.id);
+                        if (!result.canTake && context.mounted) {
+                          _showValidationNotification(context, result.message);
+                        }
                       },
                     ),
                   ),
@@ -394,6 +400,68 @@ class DashboardScreen extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+
+  void _showValidationNotification(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: AppColors.pureWhite,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.zero,
+          side: BorderSide(color: AppColors.primaryBlack, width: 2),
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.primaryBlack, width: 2),
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.access_time,
+                    size: 32,
+                    color: AppColors.primaryBlack,
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              const Text(
+                'Cannot Take Medication',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primaryBlack,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                message,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: AppColors.gray500,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              AppButton(
+                text: 'OK',
+                variant: ButtonVariant.primary,
+                fullWidth: true,
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
